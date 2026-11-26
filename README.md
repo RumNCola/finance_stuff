@@ -7,9 +7,19 @@ Reusable research infrastructure for downloading historical market data from Yah
 The project supports Python 3.11 and newer, including Python 3.15. From the repository root:
 
 ```powershell
-python -m venv .venv
+py -3.15 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
+
+Run example scripts from the `Sandbox` root with the same interpreter used for installation:
+
+```powershell
+.\.venv\Scripts\python.exe examples\international_market.py
+.\.venv\Scripts\python.exe examples\chilean_market.py
+.\.venv\Scripts\python.exe examples\query_data.py
+```
+
+If the virtual environment was created with an interpreter that has since been removed, rebuild it with `py -3.15 -m venv --clear .venv`, then reinstall. The pip upgrade notice is informational and does not indicate a project failure.
 
 ## Quick start
 
@@ -33,6 +43,34 @@ prices = load_history(
 ```
 
 The public API returns Polars DataFrames. Yahoo-specific Pandas objects are confined to the provider boundary and are converted immediately.
+
+## Autoregressive study module
+
+The AR study module is designed for learning and model comparison. It calculates simple returns from stored prices, fits ordinary AR(p), mean-adjusted AR(p), and geometric-lag AR(p) models, searches AR(1) through AR(10) by default, reports lag weights, selects the best candidate by AIC or BIC, and compounds predicted returns back into prices.
+
+```python
+from market_data import run_ar_study
+
+backtest = run_ar_study(
+    companies=["AAPL", "MSFT"],
+    horizon=10,
+    origin_date="2024-01-02",
+    output_path="./data",
+    max_p=10,
+    selection_criterion="bic",
+)
+
+print(backtest.forecasts)  # every model's predicted returns/prices
+print(backtest.comparison)  # MAE, RMSE, MAPE and direction accuracy
+print(backtest.coefficients)  # intercept, mean and lag weights
+print(backtest.selected_models)  # selected p/model per company
+```
+
+When `origin_date` is supplied, the model only trains on observations through that date and evaluates the next `horizon` stored observations. When it is omitted, the origin is each ticker's latest stored observation and the output is a genuine forward forecast; comparison metrics are null because future actuals do not exist yet. The module does not claim that lower historical error implies future profitability.
+
+The default selection criterion is BIC: among the tested ordinary AR, mean-adjusted AR, and geometric-lag candidates, the model with the lowest BIC is selected. `best_ar_p` reports the best lag length among ordinary AR models only. For historical studies, RMSE and directional accuracy compare forecasts with held-out prices; they are evaluation metrics, not the in-sample selection rule.
+
+Calling `write_report("ar_study_report.md")` also creates an `ar_study_plots/` directory. It writes one two-panel PNG per ticker: predicted versus actual prices on the left, and the best comparison metric on the right. Each graph contains at most six models, ranked by historical RMSE or, for forward-only studies, by BIC.
 
 ## Architecture
 
